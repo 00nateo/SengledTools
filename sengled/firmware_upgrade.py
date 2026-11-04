@@ -81,7 +81,7 @@ def run_firmware_upgrade(args, bulb_mac: str, setup_server, client) -> bool:
     Handles the firmware upgrade process, including user prompts and sending the command.
     Returns True if the upgrade command was sent, False otherwise.
     """
-    from sengled.utils import get_local_ip
+    from sengled.utils import get_local_ip, pick_lan_ip
     from sengled.mqtt_client import send_update_command, create_mqtt_client
     from sengled.utils import get_current_epoch_ms
 
@@ -110,7 +110,7 @@ def run_firmware_upgrade(args, bulb_mac: str, setup_server, client) -> bool:
         stop("Firmware preparation failed. Aborting upgrade.")
         return False
 
-    http_host = get_local_ip()
+    http_host = pick_lan_ip()
     http_port = str(setup_server.port)
     firmware_url = f"http://{http_host}:{http_port}/{fw_basename}"
     info(f"Serving firmware from: {firmware_url}")

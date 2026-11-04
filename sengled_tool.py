@@ -37,6 +37,7 @@ from sengled.mqtt_client import (
 )
 from sengled.utils import (
     get_local_ip,
+    pick_lan_ip,
     save_bulb,
     load_bulbs,
     get_current_epoch_ms,
@@ -683,8 +684,9 @@ def main():
         ):
             return
 
-    # Resolve broker IP: use provided value or fall back to local IP
-    resolved_broker_ip = args.broker_ip or get_local_ip()
+     # Resolve broker IP: use provided value, else a reachable LAN IP (not a
+     # Tailscale/CGNAT 100.x address that a bulb on the LAN cannot route to).
+    resolved_broker_ip = args.broker_ip or pick_lan_ip()
     tool = SengledTool(args)
 
     if args.run_http_server:

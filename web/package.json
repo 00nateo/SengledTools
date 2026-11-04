@@ -1,0 +1,30 @@
+{
+  "name": "sengled-lights",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c yellow,cyan \"python3 ../sengled_ctl.py api\" \"next dev\"",
+    "dev:web": "next dev",
+    "api": "python3 ../sengled_ctl.py api",
+    "build": "next build",
+    "start": "concurrently -k -n api,web -c yellow,cyan \"python3 ../sengled_ctl.py api\" \"next start\"",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "next": "16.4.0",
+    "react": "19.3.0",
+    "react-colorful": "^5.8.1",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^10.0.5",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

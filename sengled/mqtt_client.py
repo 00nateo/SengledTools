@@ -252,9 +252,9 @@ def create_mqtt_client(
 
     host = broker_host or getattr(args, "broker_ip", None)
     if not host:
-        # Fallback to local IP from utils to match original behavior
-        from sengled.utils import get_local_ip
-        host = get_local_ip()
+         # Fallback to a reachable LAN IP so the bulb can reach the broker we pick.
+        from sengled.utils import pick_lan_ip
+        host = pick_lan_ip()
 
     if host == "127.0.0.1":
         port = BROKER_TLS_PORT

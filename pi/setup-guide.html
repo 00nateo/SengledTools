@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pi Light Server</title>
+<meta name="description" content="Step-by-step: set up a Raspberry Pi from scratch as the always-on server for Sengled Wi-Fi bulbs.">
+<style>
+  :root {
+    --bg: #f6f5f1; --panel: #ffffff; --panel-2: #f0eee7; --line: #e2dfd5;
+    --text: #1c1b19; --muted: #66635b; --accent: #b45309; --accent-ink: #ffffff; --accent-soft: #fcefd9;
+    --ok: #15803d; --ok-soft: #e6f4ea; --warn: #a15c07; --warn-soft: #fdf3dc; --err: #b42318; --err-soft: #fdecea;
+    --code-bg: #1d1c1a; --code-text: #f2eee6; --code-muted: #a39e92; --code-var: #fbbf24;
+    --mac: #2563eb; --pi: #be185d;
+    --radius: 14px;
+    color-scheme: light;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111113; --panel: #19191c; --panel-2: #212125; --line: #2d2d33;
+      --text: #ecebe7; --muted: #9b99a1; --accent: #f5a524; --accent-ink: #1a1206; --accent-soft: #33240c;
+      --ok: #4ade80; --ok-soft: #12301d; --warn: #fbbf24; --warn-soft: #2f2508; --err: #f87171; --err-soft: #3a1414;
+      --code-bg: #0b0b0d; --code-text: #ecebe7; --code-muted: #8a8790; --code-var: #fbbf24;
+      --mac: #60a5fa; --pi: #f472b6;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #111113; --panel: #19191c; --panel-2: #212125; --line: #2d2d33;
+    --text: #ecebe7; --muted: #9b99a1; --accent: #f5a524; --accent-ink: #1a1206; --accent-soft: #33240c;
+    --ok: #4ade80; --ok-soft: #12301d; --warn: #fbbf24; --warn-soft: #2f2508; --err: #f87171; --err-soft: #3a1414;
+    --code-bg: #0b0b0d; --code-text: #ecebe7; --code-muted: #8a8790; --code-var: #fbbf24;
+    --mac: #60a5fa; --pi: #f472b6;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 var(--sans); -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  code { font-family: var(--mono); font-size: .9em; background: var(--panel-2); border: 1px solid var(--line); padding: .05em .35em; border-radius: 6px; }
+  kbd { font-family: var(--mono); font-size: .85em; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 0 .4em; background: var(--panel); }
+  h1, h2, h3 { line-height: 1.25; margin: 0; }
+  p { margin: .6em 0; }
+  ul, ol { padding-left: 1.3em; margin: .6em 0; }
+  li { margin: .3em 0; }
+
+  /* Progress bar */
+  .topbar {
+    position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line);
+  }
+  .topbar-inner { max-width: 1120px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 14px; }
+  .topbar strong { font-size: 14px; white-space: nowrap; }
+  .bar { flex: 1; height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; }
+  .bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  .count { font-size: 13px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .theme {
+    flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--line); color: var(--text); padding: 0;
+    transition: border-color .15s, transform .15s;
+  }
+  .theme:hover { border-color: var(--accent); color: var(--accent); }
+  .theme:active { transform: scale(.92); }
+  .theme:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .theme svg { width: 17px; height: 17px; }
+  .theme[data-mode="dark"] .icon-moon, .theme[data-mode="light"] .icon-sun { display: none; }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px 80px; }
+
+  /* Hero */
+  .hero { padding: 40px 0 24px; max-width: 780px; }
+  .eyebrow { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin: 0 0 8px; }
+  .hero h1 { font-size: clamp(28px, 5vw, 40px); letter-spacing: -.02em; }
+  .lede { font-size: 18px; color: var(--muted); margin-top: 12px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .chip { font-size: 13px; padding: 4px 10px; border-radius: 99px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); }
+
+  /* Diagram */
+  .diagram {
+    display: grid; grid-template-columns: 1fr auto 1.25fr auto 1fr auto 1fr; align-items: center;
+    gap: 8px; margin: 28px 0 8px; padding: 20px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  }
+  .node { padding: 14px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line); text-align: center; min-width: 0; }
+  .node b { display: block; font-size: 15px; }
+  .node small { display: block; color: var(--muted); font-size: 12.5px; line-height: 1.4; margin-top: 2px; }
+  .node.pi { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+  .link { display: flex; flex-direction: column; align-items: center; color: var(--muted); font-size: 11.5px; text-align: center; line-height: 1.3; min-width: 64px; }
+  .link::after { content: "⟷"; font-size: 20px; color: var(--accent); line-height: 1; margin-top: 4px; }
+  @media (max-width: 760px) {
+    .diagram { grid-template-columns: 1fr; }
+    .link { flex-direction: row; gap: 8px; justify-content: center; }
+    .link::after { content: "↕"; margin: 0; order: -1; }
+  }
+
+  /* Layout */
+  .layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 40px; align-items: start; }
+  @media (max-width: 960px) { .layout { grid-template-columns: minmax(0, 1fr); } .toc { display: none; } }
+  .toc { position: sticky; top: 72px; font-size: 14px; }
+  .toc p { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
+  .toc ol { list-style: none; padding: 0; margin: 0; }
+  .toc li { margin: 0; }
+  .toc a { display: flex; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 8px; color: var(--text); text-decoration: none; }
+  .toc a:hover { background: var(--panel); }
+  .toc .dot { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line); display: grid; place-items: center; font-size: 11px; color: var(--muted); flex: none; }
+  .toc li.done .dot { background: var(--ok); border-color: var(--ok); color: var(--bg); }
+  .toc li.done .dot::before { content: "✓"; }
+  .toc li.done .dot span { display: none; }
+
+  /* Details card */
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .details h2 { font-size: 18px; }
+  .details p { color: var(--muted); font-size: 14px; margin: 4px 0 14px; }
+  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .fields label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+  .fields input {
+    font: 15px var(--mono); color: var(--text); background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 9px 11px; outline: none; width: 100%;
+  }
+  .fields input:focus { border-color: var(--accent); }
+
+  /* Steps */
+  .step { margin-top: 28px; scroll-margin-top: 72px; }
+  .step-head { display: flex; align-items: center; gap: 14px; }
+  .num {
+    flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--accent); color: var(--accent-ink); font-weight: 700;
+  }
+  .step.is-done .num { background: var(--ok); }
+  .step-head h2 { font-size: 21px; flex: 1; letter-spacing: -.01em; }
+  .step-head .opt { font-size: 12px; font-weight: 500; color: var(--muted); border: 1px solid var(--line); padding: 1px 8px; border-radius: 99px; vertical-align: middle; margin-left: 6px; }
+  .done-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; white-space: nowrap; }
+  .done-toggle input { width: 18px; height: 18px; accent-color: var(--ok); cursor: pointer; }
+  .step-body { margin-left: 50px; }
+  @media (max-width: 600px) { .step-body { margin-left: 0; } .step-head h2 { font-size: 19px; } }
+  .step-body > .card { margin-top: 12px; }
+  h3 { font-size: 16px; margin-top: 18px; }
+  .sub { color: var(--muted); font-size: 14px; }
+
+  /* Commands */
+  .cmd { margin: 12px 0; border-radius: 12px; overflow: hidden; background: var(--code-bg); border: 1px solid color-mix(in srgb, var(--code-bg) 70%, var(--line)); }
+  .cmd-head { display: flex; align-items: center; justify-content: space-between; padding: 7px 10px 7px 12px; border-bottom: 1px solid #ffffff14; }
+  .where { font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; color: var(--code-muted); }
+  .where::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--code-muted); }
+  .where.mac::before { background: var(--mac); }
+  .where.pi::before { background: var(--pi); }
+  .copy {
+    font: 12px var(--sans); color: var(--code-text); background: #ffffff14; border: 1px solid #ffffff22;
+    border-radius: 7px; padding: 3px 10px; cursor: pointer;
+  }
+  .copy:hover { background: #ffffff24; }
+  .copy.ok { color: #4ade80; border-color: #4ade8066; }
+  .cmd pre { margin: 0; padding: 12px 14px; overflow-x: auto; }
+  .cmd code, .out code { background: none; border: 0; padding: 0; color: var(--code-text); font-size: 13.5px; line-height: 1.6; white-space: pre; }
+  .v { color: var(--code-var); }
+  .out { margin: 10px 0; padding: 12px 14px; border-radius: 12px; background: var(--panel-2); border: 1px dashed var(--line); overflow-x: auto; }
+  .out code { color: var(--text); font-size: 13px; }
+  .out-label { font-size: 12px; color: var(--muted); margin: 10px 0 -4px; }
+  .g { color: var(--ok); } .m { color: var(--muted); }
+
+  /* Callouts */
+  .callout { margin: 14px 0; padding: 12px 14px; border-radius: 12px; border: 1px solid; font-size: 15px; }
+  .callout b:first-child { display: block; margin-bottom: 2px; }
+  .callout.tip { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+  .callout.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+  .callout.ok { background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+  .callout p:first-of-type { margin-top: 0; } .callout p:last-child { margin-bottom: 0; }
+
+  /* Lists */
+  .parts { list-style: none; padding: 0; display: grid; gap: 8px; }
+  .parts li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; margin: 0; }
+  .parts li::before { content: "◆"; color: var(--accent); font-size: 12px; padding-top: 4px; }
+  .parts .why { display: block; color: var(--muted); font-size: 14px; }
+  .settings { width: 100%; border-collapse: collapse; font-size: 15px; margin: 10px 0; }
+  .settings td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .settings td:first-child { color: var(--muted); width: 38%; }
+  .substeps { counter-reset: s; list-style: none; padding: 0; }
+  .substeps > li { counter-increment: s; position: relative; padding-left: 34px; margin: 16px 0; }
+  .substeps > li::before {
+    content: counter(s, lower-alpha); position: absolute; left: 0; top: 1px; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--panel-2); border: 1px solid var(--line); display: grid; place-items: center; font-size: 13px; font-weight: 600; color: var(--muted);
+  }
+
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; margin: 10px 0; }
+  summary { cursor: pointer; padding: 12px 14px; font-weight: 600; list-style: none; display: flex; gap: 10px; align-items: baseline; }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "›"; color: var(--accent); font-size: 18px; transition: transform .15s; line-height: 1; }
+  details[open] summary::before { transform: rotate(90deg); }
+  details > div { padding: 0 14px 12px 34px; }
+
+  .finish { margin-top: 40px; text-align: center; padding: 28px 20px; }
+  .finish h2 { font-size: 22px; }
+  footer { color: var(--muted); font-size: 13px; text-align: center; margin-top: 40px; }
+</style>
+<script>
+  // Apply a saved light/dark choice before the page paints (no flash).
+  try {
+    const t = localStorage.getItem("pi-light-guide-theme");
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  } catch {}
+</script>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <strong>Pi Light Server</strong>
+    <div class="bar" aria-hidden="true"><span id="bar"></span></div>
+    <span class="count" id="count">0 of 9 done</span>
+    <button class="theme" id="theme" type="button" aria-label="Switch to dark mode" title="Switch to dark mode">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="wrap">
+  <header class="hero">
+    <p class="eyebrow">SengledTools · Raspberry Pi</p>
+    <h1>Run your lights from a Raspberry Pi</h1>
+    <p class="lede">
+      The Pi becomes the always-on server for your bulbs. It hosts a private Wi-Fi network just for them,
+      runs the bulb service and web app, and connects to your building's network with an Ethernet cable.
+      Your Mac no longer has to stay on or switch networks.
+    </p>
+    <div class="meta">
+      <span class="chip">About 45–60 minutes, mostly waiting</span>
+      <span class="chip">No config files to edit</span>
+      <span class="chip">Starts from a blank microSD card</span>
+    </div>
+  </header>
+
+  <div class="diagram" role="img" aria-label="Bulbs connect over Wi-Fi to the Raspberry Pi, which connects over Ethernet to the building network, where your phone and Mac reach it.">
+    <div class="node"><b>Bulbs</b><small>on the Pi's own Wi-Fi</small></div>
+    <div class="link">Wi-Fi<br><span class="v-plain" data-v="ssid">SengledNet</span></div>
+    <div class="node pi"><b>Raspberry Pi</b><small>10.42.0.1 on the bulb network<br>bulb service + web app</small></div>
+    <div class="link">Ethernet</div>
+    <div class="node"><b>Building network</b><small>WhiteSky wall jack</small></div>
+    <div class="link">Wi-Fi or<br>Tailscale</div>
+    <div class="node"><b>Phone / Mac</b><small>http://<span data-v="host">lights</span>.local:3000</small></div>
+  </div>
+  <p class="sub" style="max-width:780px">
+    <b>Why this fixes the spotty connection:</b> on WhiteSky-Brexx the bulbs dropped every 5–26 seconds because of how
+    the building's Wi-Fi handles device-to-device traffic. On the Pi's own network, bulbs never touch WhiteSky, and the
+    Pi's address (10.42.0.1) never changes.
+  </p>
+
+  <div class="layout" style="margin-top:28px">
+    <nav class="toc" aria-label="Steps">
+      <p>Steps</p>
+      <ol id="toc">
+        <li data-for="parts"><a href="#parts"><span class="dot"><span>1</span></span>Get the parts</a></li>
+        <li data-for="flash"><a href="#flash"><span class="dot"><span>2</span></span>Prepare the microSD</a></li>
+        <li data-for="boot"><a href="#boot"><span class="dot"><span>3</span></span>First boot &amp; SSH</a></li>
+        <li data-for="copy"><a href="#copy"><span class="dot"><span>4</span></span>Copy the tools</a></li>
+        <li data-for="install"><a href="#install"><span class="dot"><span>5</span></span>Run the installer</a></li>
+        <li data-for="open"><a href="#open"><span class="dot"><span>6</span></span>Open the web app</a></li>
+        <li data-for="pair"><a href="#pair"><span class="dot"><span>7</span></span>Move the bulbs</a></li>
+        <li data-for="anywhere"><a href="#anywhere"><span class="dot"><span>8</span></span>Control from anywhere</a></li>
+        <li data-for="daily"><a href="#daily"><span class="dot"><span>9</span></span>Day to day</a></li>
+      </ol>
+      <p style="margin-top:18px"><a href="#trouble" style="text-transform:none;letter-spacing:0;font-size:14px">Troubleshooting →</a></p>
+    </nav>
+
+    <main>
+      <section class="card details" aria-labelledby="details-h">
+        <h2 id="details-h">Your details</h2>
+        <p>Every command below updates as you type, so you can copy them as-is. Nothing leaves this page, and the
+          password is never saved.</p>
+        <div class="fields">
+          <label>Pi's name (hostname)<input data-field="host" value="lights" autocomplete="off" spellcheck="false"></label>
+          <label>Pi username<input data-field="user" value="nate" autocomplete="off" spellcheck="false"></label>
+          <label>Bulb Wi-Fi name<input data-field="ssid" value="SengledNet" autocomplete="off" spellcheck="false"></label>
+          <label>Bulb Wi-Fi password<input data-field="pw" type="password" placeholder="letters + numbers" autocomplete="off" spellcheck="false"></label>
+        </div>
+      </section>
+
+      <!-- 1 -->
+      <section class="step" id="parts">
+        <div class="step-head">
+          <span class="num">1</span><h2>Get the parts</h2>
+          <label class="done-toggle"><input type="checkbox" data-step="parts">Done</label>
+        </div>
+        <div class="step-body">
+          <ul class="parts">
+            <li><div><b>Raspberry Pi 4 or Pi 5, 4 GB or more</b><span class="why">2 GB works, but building the web app on it is slow and can run out of memory. Older models (Pi 3, Zero) aren't enough.</span></div></li>
+            <li><div><b>The official power supply for that model</b><span class="why">Pi 5: 27 W USB-C. Pi 4: 15 W USB-C. Phone chargers often cause random restarts.</span></div></li>
+            <li><div><b>microSD card, 32 GB or more</b><span class="why">Any name brand marked A1 or A2. Your Mac needs an SD slot or a USB card reader to write it.</span></div></li>
+            <li><div><b>Ethernet cable</b><span class="why">Long enough to reach a network jack in your unit. You'll check that the jack is active in step 3.</span></div></li>
+            <li><div><b>A case</b> <span class="m">(optional)</span><span class="why">For a Pi 5, pick one with a fan or the official active cooler.</span></div></li>
+            <li><div><b>Monitor and USB keyboard</b> <span class="m">(only if something goes wrong)</span><span class="why">Pi 4 and 5 use a micro-HDMI cable.</span></div></li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- 2 -->
+      <section class="step" id="flash">
+        <div class="step-head">
+          <span class="num">2</span><h2>Put Raspberry Pi OS on the microSD card</h2>
+          <label class="done-toggle"><input type="checkbox" data-step="flash">Done</label>
+        </div>
+        <div class="step-body">
+          <ol class="substeps">
+            <li>On the Mac, download and install <b>Raspberry Pi Imager</b> from
+              <a href="https://www.raspberrypi.com/software/" target="_blank" rel="noopener">raspberrypi.com/software</a>, then open it.</li>
+            <li><b>Device:</b> choose your Pi model.</li>
+            <li><b>Operating system:</b> <i>Raspberry Pi OS (other)</i> → <b>Raspberry Pi OS Lite (64-bit)</b>.
+              <span class="sub">“Lite” has no desktop, which the Pi doesn't need and which saves memory.</span></li>
+            <li><b>Storage:</b> the microSD card. Double-check it's the card, because it gets erased.</li>
+            <li>When Imager offers to <b>customise</b> the OS (“Edit settings” in older versions), use these settings:
+              <table class="settings">
+                <tr><td>Hostname</td><td><code><span data-v="host">lights</span></code></td></tr>
+                <tr><td>Username and password</td><td><code><span data-v="user">nate</span></code> and a password you'll remember. You'll type it to log in.</td></tr>
+                <tr><td>Time zone and keyboard</td><td>Yours</td></tr>
+                <tr><td>Wi-Fi</td><td><b>Leave it off.</b> The Pi's Wi-Fi will host the bulbs' network, and the Pi uses Ethernet for the building.</td></tr>
+                <tr><td>SSH</td><td><b>Turn on</b>, with password authentication</td></tr>
+                <tr><td>Raspberry Pi Connect</td><td>Optional. If it's offered, it gives you a backup way to open the Pi's terminal from a browser.</td></tr>
+              </table>
+            </li>
+            <li>Write the card (about 5 minutes), then eject it.</li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- 3 -->
+      <section class="step" id="boot">
+        <div class="step-head">
+          <span class="num">3</span><h2>Plug in the Pi and connect to it</h2>
+          <label class="done-toggle"><input type="checkbox" data-step="boot">Done</label>
+        </div>
+        <div class="step-body">
+          <ol class="substeps">
+            <li>Put the card in the Pi, connect the <b>Ethernet cable from the wall jack</b> to the Pi, and only then plug in the power.
+              Wait about 2 minutes. The first boot takes longer and may restart once.</li>
+            <li>On the Mac, open <b>Terminal</b> (<kbd>⌘</kbd> <kbd>Space</kbd>, type “Terminal”) and connect to the Pi:
+              <div class="cmd"><div class="cmd-head"><span class="where mac">Mac · Terminal</span><button class="copy">Copy</button></div>
+<pre><code>ssh <span class="v" data-v="user">nate</span>@<span class="v" data-v="host">lights</span>.local</code></pre></div>
+              The first time, it asks <i>“Are you sure you want to continue connecting?”</i>. Type <code>yes</code>. Then type the Pi
+              password. Nothing shows while you type, which is normal. You're in when the prompt looks like
+              <code><span data-v="user">nate</span>@<span data-v="host">lights</span>:~ $</code>.
+            </li>
+            <li>Check that the Pi has internet through the wall jack:
+              <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · in the SSH window</span><button class="copy">Copy</button></div>
+<pre><code>ping -c 3 raspberrypi.com</code></pre></div>
+              You want to see <code>3 received</code>. That means the jack is active and the installer can download what it needs.
+            </li>
+          </ol>
+          <div class="callout ok">
+            <b>Good sign</b>
+            If SSH worked while your Mac was on WhiteSky Wi-Fi, the building lets Wi-Fi devices reach wired ones. Your phone
+            will be able to open the web app directly.
+          </div>
+          <details>
+            <summary>“Could not resolve hostname” or it just hangs</summary>
+            <div>
+              <p>Wait another minute and try again. If it still fails, the building network may not pass the <code>.local</code> name around.</p>
+              <ul>
+                <li>Plug a monitor and keyboard into the Pi, log in, and run <code>hostname -I</code>. The first address is the Pi's.
+                  Then on the Mac, run <code>ssh <span data-v="user">nate</span>@THAT-ADDRESS</code>, and use that address
+                  wherever this guide says <code><span data-v="host">lights</span>.local</code>.</li>
+                <li>If <code>hostname -I</code> shows nothing, the wall jack isn't active. Ask WhiteSky to turn it on. They may ask for the
+                  Pi's hardware (MAC) address, which <code>cat /sys/class/net/eth0/address</code> shows.</li>
+                <li>If the Pi has an address and internet but the Mac still can't reach it, the building keeps wired and Wi-Fi devices apart.
+                  On the Pi's own keyboard, do <a href="#anywhere">step 8 (Tailscale)</a> first, using <code>sudo tailscale up --qr</code>
+                  and scanning the QR code with your phone to sign in. Then put Tailscale on the Mac too, and use
+                  <code><span data-v="host">lights</span></code> instead of <code><span data-v="host">lights</span>.local</code> everywhere.</li>
+              </ul>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <!-- 4 -->
+      <section class="step" id="copy">
+        <div class="step-head">
+          <span class="num">4</span><h2>Copy SengledTools to the Pi</h2>
+          <label class="done-toggle"><input type="checkbox" data-step="copy">Done</label>
+        </div>
+        <div class="step-body">
+          <p>Your version of the tools, with the web app and all recent fixes, only exists on your Mac, so copy it over.</p>
+          <ol class="substeps">
+            <li>On the Pi, install the copy tool:
+              <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · in the SSH window</span><button class="copy">Copy</button></div>
+<pre><code>sudo apt update &amp;&amp; sudo apt install -y rsync</code></pre></div>
+            </li>
+            <li>Open a <b>new Terminal tab on the Mac</b> (<kbd>⌘</kbd> <kbd>T</kbd>), not inside the SSH session, and copy the folder.
+              It skips the Mac-only parts, which the Pi rebuilds for itself.
+              <div class="cmd"><div class="cmd-head"><span class="where mac">Mac · new Terminal tab</span><button class="copy">Copy</button></div>
+<pre><code>rsync -av --exclude .venv --exclude node_modules --exclude .next --exclude __pycache__ --exclude .git ~/SengledTools/ <span class="v" data-v="user">nate</span>@<span class="v" data-v="host">lights</span>.local:SengledTools/</code></pre></div>
+            </li>
+            <li><span class="m">Optional:</span> bring over your bulb names (like “Side Living Room”) so they carry over:
+              <div class="cmd"><div class="cmd-head"><span class="where mac">Mac · same tab</span><button class="copy">Copy</button></div>
+<pre><code>ssh <span class="v" data-v="user">nate</span>@<span class="v" data-v="host">lights</span>.local mkdir -p .sengled &amp;&amp; scp ~/.sengled/lan.json <span class="v" data-v="user">nate</span>@<span class="v" data-v="host">lights</span>.local:.sengled/</code></pre></div>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- 5 -->
+      <section class="step" id="install">
+        <div class="step-head">
+          <span class="num">5</span><h2>Run the installer</h2>
+          <label class="done-toggle"><input type="checkbox" data-step="install">Done</label>
+        </div>
+        <div class="step-body">
+          <p>Back in the SSH window, run the installer:</p>
+          <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · in the SSH window</span><button class="copy">Copy</button></div>
+<pre><code>cd ~/SengledTools &amp;&amp; bash pi/install.sh</code></pre></div>
+          <p>It asks three questions partway through:</p>
+          <ul>
+            <li><b>Country code:</b> e.g. <code>US</code>. This sets the legal Wi-Fi channels.</li>
+            <li><b>Name for the bulbs' Wi-Fi:</b> press <kbd>Enter</kbd> for <code>SengledNet</code>, or type the name from <i>Your details</i>.</li>
+            <li><b>Password:</b> 8–63 letters and numbers only (bulbs can choke on symbols). Nothing shows while you type. Use the same one as in <i>Your details</i>.</li>
+          </ul>
+          <p>It takes 10–20 minutes, mostly building the web app. Here's what it does:</p>
+          <div class="card" style="font-size:15px">
+            <ol style="margin:0">
+              <li>Installs system packages and Node.js</li>
+              <li>Sets up the bulb service's Python packages</li>
+              <li>Builds the web app (the lighter production build)</li>
+              <li>Turns the Pi's Wi-Fi into <b><span data-v="ssid">SengledNet</span></b> (2.4 GHz, WPA2), with the Pi at <b>10.42.0.1</b></li>
+              <li>Sets up a service that starts everything at boot and restarts it if it ever crashes</li>
+            </ol>
+          </div>
+          <p class="out-label">It ends like this:</p>
+<pre class="out"><code><span class="g">✓ Running, and starts by itself after every reboot</span>
+
+<span class="g">All set.</span>
+
+  Web app:     http://<span data-v="host">lights</span>.local:3000   or   http://100.110.x.x:3000
+  Bulb Wi-Fi:  <span data-v="ssid">SengledNet</span>  (server address for bulbs: 10.42.0.1)</code></pre>
+          <div class="callout tip">
+            <b>Check</b>
+            Your phone's Wi-Fi list should now show <b><span data-v="ssid">SengledNet</span></b>. Don't join it. It's just for the bulbs.
+          </div>
+          <p class="sub">You can run the installer again anytime, for example after copying a newer version. It keeps the Wi-Fi network you set up.</p>
+        </div>
+      </section>
+
+      <!-- 6 -->
+      <section class="step" id="open">
+        <div class="step-head">
+          <span class="num">6</span><h2>Open the web app</h2>
+          <label class="done-toggle"><input type="checkbox" data-step="open">Done</label>
+        </div>
+        <div class="step-body">
+          <p>On your Mac or phone (on WhiteSky Wi-Fi), open:</p>
+          <div class="cmd"><div class="cmd-head"><span class="where">Browser address bar</span><button class="copy">Copy</button></div>
+<pre><code>http://<span class="v" data-v="host">lights</span>.local:3000</code></pre></div>
+          <p>It's the same app as on your Mac, now served by the Pi. There are no bulbs yet, or your copied names show as offline,
+            until you move them in the next step.</p>
+          <ul>
+            <li>If the name doesn't load, use the address the installer printed, like <code>http://100.110.x.x:3000</code>.</li>
+            <li>If neither loads, the building separates wired and Wi-Fi devices. <a href="#anywhere">Step 8</a> gets around that.</li>
+            <li>On iPhone: <b>Share → Add to Home Screen</b> makes it open like an app.</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- 7 -->
+      <section class="step" id="pair">
+        <div class="step-head">
+          <span class="num">7</span><h2>Move each bulb to the Pi</h2>
+          <label class="done-toggle"><input type="checkbox" data-step="pair">Done</label>
+        </div>
+        <div class="step-body">
+          <p>Each bulb is paired once, <b>from the Mac</b>, pointing it at the Pi. Do one bulb at a time.</p>
+          <ol class="substeps">
+            <li><b>Put the bulb in setup mode.</b> If it still works in your Mac's web app, select it and go to
+              <i>Advanced → Factory reset</i> (type <code>RESET</code>). Otherwise, turn it off and on <b>5 times</b> until it blinks.</li>
+            <li><b>On the Mac,</b> join the <b>Sengled Wi-Fi Bulb_…</b> network from the Wi-Fi menu. It has no password.</li>
+            <li><b>In Terminal on the Mac,</b> send the bulb the Pi's network and address:
+              <div class="cmd"><div class="cmd-head"><span class="where mac">Mac · Terminal</span><button class="copy">Copy</button></div>
+<pre><code>cd ~/SengledTools &amp;&amp; python3 sengled_ctl.py wifi --ssid "<span class="v" data-v="ssid">SengledNet</span>" --password '<span class="v" data-v="pw">YOUR-PASSWORD</span>' --callback 10.42.0.1</code></pre></div>
+              <p class="out-label">It ends with:</p>
+<pre class="out"><code><span class="g">  ✓</span> bulb left its setup network after ~4s.
+<span class="g">  ✓</span> the bulb is joining '<span data-v="ssid">SengledNet</span>' and will connect to the server at 10.42.0.1 within ~1 min.</code></pre>
+            </li>
+            <li><b>Within a minute,</b> the bulb shows up in the Pi's web app as <i>Online · Wi-Fi</i>. Click the ✎ next to it to name it.
+              The Mac goes back to its usual Wi-Fi by itself. If it doesn't, pick your network from the Wi-Fi menu.</li>
+          </ol>
+          <div class="callout tip">
+            <b>Prefer clicking?</b>
+            In the Mac's own web app (<code>npm start</code> in <code>web/</code>), use <i>Wi-Fi setup</i> and click <b>10.42.0.1</b> under
+            <i>Server address</i>. Or in the terminal app (<code>python3 sengled_ctl.py</code>), press <kbd>w</kbd> and enter 10.42.0.1 as the server
+            address. Don't use Wi-Fi setup in the <i>Pi's</i> web app, because the Pi's Wi-Fi is busy hosting the bulbs.
+          </div>
+          <div class="callout warn">
+            <b>Range</b>
+            The Pi's built-in Wi-Fi reaches about a room or two. In the Pi's web app, open a bulb's <i>Stats for nerds</i>.
+            A signal of −67 dBm or better is good. If one says <i>weak</i>, move the Pi closer to the middle of your place.
+          </div>
+        </div>
+      </section>
+
+      <!-- 8 -->
+      <section class="step" id="anywhere">
+        <div class="step-head">
+          <span class="num">8</span><h2>Control from anywhere <span class="opt">optional</span></h2>
+          <label class="done-toggle"><input type="checkbox" data-step="anywhere">Done</label>
+        </div>
+        <div class="step-body">
+          <p><b>Tailscale</b> (free for personal use) links your devices privately. You can open the web app from your phone
+            on cell data or away from home, no matter how the building network is set up.</p>
+          <ol class="substeps">
+            <li>Install it on the Pi:
+              <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · in the SSH window</span><button class="copy">Copy</button></div>
+<pre><code>curl -fsSL https://tailscale.com/install.sh | sh &amp;&amp; sudo tailscale up</code></pre></div>
+              It prints a login link. Open it on the Mac and sign in (Google, Apple and others work).
+            </li>
+            <li>On your iPhone, install <b>Tailscale</b> from the App Store, sign in with the <b>same account</b>, and turn it on.</li>
+            <li>Open this from anywhere:
+              <div class="cmd"><div class="cmd-head"><span class="where">Browser address bar</span><button class="copy">Copy</button></div>
+<pre><code>http://<span class="v" data-v="host">lights</span>:3000</code></pre></div>
+            </li>
+          </ol>
+          <div class="callout warn">
+            <b>Don't open it to the internet</b>
+            The web app has no login. Never set up port forwarding for it. Tailscale keeps it visible only to your own devices.
+          </div>
+        </div>
+      </section>
+
+      <!-- 9 -->
+      <section class="step" id="daily">
+        <div class="step-head">
+          <span class="num">9</span><h2>Day to day</h2>
+          <label class="done-toggle"><input type="checkbox" data-step="daily">Done</label>
+        </div>
+        <div class="step-body">
+          <ul>
+            <li><b>Nothing to start.</b> After a power cut the Pi boots, starts everything, and the bulbs reconnect within about a minute.</li>
+            <li><b>Your Mac is free.</b> You no longer need to run <code>npm start</code> on it. Stop it if it's still running.</li>
+            <li><b>Turn the Pi off safely</b> before unplugging it. Wait for the green light to stop blinking:
+              <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
+<pre><code>sudo shutdown -h now</code></pre></div></li>
+            <li><b>After changing the tools on the Mac,</b> run the <a href="#copy">step 4 copy command</a> again, then:
+              <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
+<pre><code>bash ~/SengledTools/pi/install.sh</code></pre></div>
+              If only <code>sengled_ctl.py</code> changed, a restart is enough:
+              <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
+<pre><code>sudo systemctl restart sengled-lights</code></pre></div></li>
+            <li><b>Logs.</b> The first shows the service; the second shows what the bulbs do (the same log as on the Mac):
+              <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
+<pre><code>journalctl -u sengled-lights -f</code></pre></div>
+              <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
+<pre><code>tail -f ~/.sengled/logs/sengled.log</code></pre></div>
+              Press <kbd>Ctrl</kbd> <kbd>C</kbd> to stop watching.</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Troubleshooting -->
+      <section class="step" id="trouble">
+        <div class="step-head"><span class="num" style="background:var(--muted)">?</span><h2>Troubleshooting</h2></div>
+        <div class="step-body">
+          <details>
+            <summary>The installer says “No Ethernet connection”</summary>
+            <div><p>Check that the cable is firmly in both ends and that the jack is active (step 3's <code>ping</code> test). The Pi's Wi-Fi is about to become the bulbs' network, so the installer won't continue without Ethernet.</p></div>
+          </details>
+          <details>
+            <summary>The installer says you're connected over the Pi's Wi-Fi</summary>
+            <div><p>That step takes over the Wi-Fi, which would cut off your session. Reconnect with the Ethernet address it prints (<code>ssh <span data-v="user">nate</span>@100.110.x.x</code>) and run it again.</p></div>
+          </details>
+          <details>
+            <summary>The web app build stops with “out of memory” or “Killed”</summary>
+            <div><p>This happens on 2 GB Pis. Run the installer again; it picks up where it left off and stops the running service to free memory. If it keeps failing, a 4 GB Pi avoids it.</p></div>
+          </details>
+          <details>
+            <summary>“<span data-v="ssid">SengledNet</span>” doesn't show up in Wi-Fi lists</summary>
+            <div>
+              <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
+<pre><code>sudo rfkill unblock wifi &amp;&amp; sudo nmcli connection up SengledNet</code></pre></div>
+              <p>If that prints an error, run the installer again; it recreates the network if it's missing.</p>
+            </div>
+          </details>
+          <details>
+            <summary>A bulb never shows up in the Pi's web app</summary>
+            <div>
+              <ul>
+                <li><b>Its “Sengled Wi-Fi Bulb_…” network came back:</b> it couldn't join. Check the network name and password
+                  (case-sensitive) and that the bulb is within range of the Pi, then repeat step 7.</li>
+                <li><b>See whether it joined the Pi's Wi-Fi.</b> Each connected device is one line:
+                  <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
+<pre><code>iw dev wlan0 station dump | grep Station</code></pre></div></li>
+                <li><b>See whether it contacted the Pi:</b>
+                  <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
+<pre><code>grep call-home ~/.sengled/logs/sengled.log | tail</code></pre></div>
+                  If it joined but never called home, it was probably paired with the wrong server address. Pair it again with <code>--callback 10.42.0.1</code>.</li>
+              </ul>
+            </div>
+          </details>
+          <details>
+            <summary>The web app says “Bulb service not running”</summary>
+            <div>
+              <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
+<pre><code>sudo systemctl restart sengled-lights; journalctl -u sengled-lights -n 50</code></pre></div>
+              <p>The last lines usually say what went wrong.</p>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <div class="card finish">
+        <h2>That's it 💡</h2>
+        <p class="sub">The Pi runs your lights around the clock on a network it controls. Open
+          <code>http://<span data-v="host">lights</span>.local:3000</code> to control them.</p>
+      </div>
+
+      <footer>SengledTools · Raspberry Pi setup guide · Installer: <code>pi/install.sh</code></footer>
+    </main>
+  </div>
+</div>
+
+<script>
+(() => {
+  const KEY = "pi-light-guide";
+  const PLACEHOLDER = { pw: "YOUR-PASSWORD" };
+  const store = {
+    get() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } },
+    set(v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch {} },
+  };
+  const saved = store.get();
+  const values = { host: "lights", user: "nate", ssid: "SengledNet", ...(saved.fields || {}), pw: "" };
+  const done = new Set(saved.done || []);
+
+  const save = () => {
+    const { pw, ...fields } = values;  // the password is never stored
+    store.set({ fields, done: [...done] });
+  };
+
+  // Your details -> every command on the page
+  const render = () => {
+    document.querySelectorAll("[data-v]").forEach((el) => {
+      const k = el.dataset.v;
+      el.textContent = values[k] || PLACEHOLDER[k] || "";
+    });
+  };
+  document.querySelectorAll("[data-field]").forEach((input) => {
+    const k = input.dataset.field;
+    input.value = values[k] || "";
+    input.addEventListener("input", () => {
+      values[k] = input.value.trim();
+      render();
+      save();
+    });
+  });
+  render();
+
+  // Done checkboxes + progress
+  const boxes = [...document.querySelectorAll("[data-step]")];
+  const update = () => {
+    boxes.forEach((b) => {
+      b.checked = done.has(b.dataset.step);
+      b.closest(".step").classList.toggle("is-done", b.checked);
+      document.querySelector(`#toc li[data-for="${b.dataset.step}"]`)?.classList.toggle("done", b.checked);
+    });
+    document.getElementById("bar").style.width = `${(done.size / boxes.length) * 100}%`;
+    document.getElementById("count").textContent = `${done.size} of ${boxes.length} done`;
+  };
+  boxes.forEach((b) => b.addEventListener("change", () => {
+    b.checked ? done.add(b.dataset.step) : done.delete(b.dataset.step);
+    update();
+    save();
+  }));
+  update();
+
+  // Light / dark toggle: follows the system until you pick one, then remembers it.
+  const THEME_KEY = "pi-light-guide-theme";
+  const root = document.documentElement;
+  const themeBtn = document.getElementById("theme");
+  const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
+  const current = () => root.dataset.theme || (systemDark.matches ? "dark" : "light");
+  const showTheme = () => {
+    const mode = current();
+    const label = `Switch to ${mode === "dark" ? "light" : "dark"} mode`;
+    themeBtn.dataset.mode = mode;
+    themeBtn.setAttribute("aria-label", label);
+    themeBtn.title = label;
+  };
+  themeBtn.addEventListener("click", () => {
+    root.dataset.theme = current() === "dark" ? "light" : "dark";
+    try { localStorage.setItem(THEME_KEY, root.dataset.theme); } catch {}
+    showTheme();
+  });
+  systemDark.addEventListener?.("change", showTheme);
+  showTheme();
+
+  // Copy buttons
+  document.querySelectorAll(".copy").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const text = btn.closest(".cmd").querySelector("code").innerText.trim();
+      let ok = false;
+      try { await navigator.clipboard.writeText(text); ok = true; } catch {
+        const ta = Object.assign(document.createElement("textarea"), { value: text });
+        document.body.append(ta); ta.select();
+        try { ok = document.execCommand("copy"); } catch {}
+        ta.remove();
+      }
+      btn.textContent = ok ? "Copied" : "Select & copy";
+      btn.classList.toggle("ok", ok);
+      setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("ok"); }, 1600);
+    });
+  });
+})();
+</script>
+</body>
+</html>

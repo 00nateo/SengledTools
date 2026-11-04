@@ -19,7 +19,7 @@ from urllib.error import URLError, HTTPError
 
 from sengled.utils import get_mac_address
 
-from sengled.utils import get_local_ip, save_bulb
+from sengled.utils import get_local_ip, pick_lan_ip, save_bulb
 from sengled.crypto import encrypt_wifi_payload, decrypt_wifi_payload
 from sengled.log import say, step, info, warn as warn_, debug, section, subsection, success, waiting, get_indent, set_indent, is_verbose, cmd
 from sengled.http_server import SetupHTTPServer
@@ -126,14 +126,16 @@ def run_wifi_setup(
 	  - meta is a SetupHTTPServer instance when we started the server,
 	    or a dict with keys {"last_client_ip", "support_info"} when using an external server.
 	"""
-	# Capture LAN IP before switching to bulb AP; use this for URLs the bulb will hit
-	lan_ip_before_ap = get_local_ip()
+	# Capture LAN IP before switching to bulb AP; use this for URLs the bulb will hit.
+	# Use pick_lan_ip() so we never hand the bulb a Tailscale/CGNAT (100.x) or APIPA
+	# address it cannot route to -- that is what broke endpoint verification.
+	lan_ip_before_ap = pick_lan_ip()
 	local_wifi_ip = lan_ip_before_ap
 	section("Wi-Fi Setup")
 	subsection("Preparation")
 	info(f"Local IP address: {local_wifi_ip}")
 
-	# HTTP endpoint URLs given to the bulb must be reachable after it joins your LAN
+		# HTTP endpoint URLs given to the bulb must be reachable after it joins your LAN
 	http_host_for_urls = getattr(args, "http_server_ip", None) or lan_ip_before_ap
 	waiting("Connect to bulb's 'Sengled_Wi-Fi Bulb_XXXXXX' network")
 	print("")
@@ -151,12 +153,13 @@ def run_wifi_setup(
 		warn_("Setup cancelled by user")
 		return None, None, None
 
-	# Refresh local Wi‑Fi IP after user connects to bulb AP (server still binds 0.0.0.0)
-	local_wifi_ip = get_local_ip()
+	# Refresh local Wi‑Fi IP after user connects to bulb AP (server still binds 0.0.0.0).
+	# Pick a real LAN address so the bulb can reach the broker we advertise.
+	local_wifi_ip = pick_lan_ip()
 
 	# MQTT broker will be started after successful bulb connection
 	_embedded_broker: EmbeddedBroker | None = None
-	lan_ip = get_local_ip()
+	lan_ip = pick_lan_ip()
 
 	server_started = False
 	setup_server: SetupHTTPServer | None = None

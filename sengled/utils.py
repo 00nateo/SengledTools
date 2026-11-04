@@ -8,8 +8,33 @@ import json
 import socket
 import time
 import re
+import ipaddress
 from pathlib import Path
 from typing import Dict, Optional
+
+# Ranges that are NOT reachable from a device on your real local Wi-Fi,
+# e.g. Tailscale's CGNAT overlay (100.64.0.0/10) or an APIPA self-assign
+# (169.254.0.0/16). Handing one of these to the bulb is what breaks the
+# "bulb did not contact required endpoints" verification.
+_BAD_IP_RANGES = [
+     ipaddress.ip_network("100.64.0.0/10"),
+     ipaddress.ip_network("169.254.0.0/16"),
+]
+
+
+def _is_reachable_lan_ip(ip: str) -> bool:
+    """True if this IP could plausibly be reached by a bulb on the real LAN."""
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    if addr.is_loopback:
+        return False
+    for net in _BAD_IP_RANGES:
+        if addr in net:
+            return False
+    return True
+
 
 def get_local_ip() -> str:
     """Get the local IP address of this computer."""
@@ -21,6 +46,45 @@ def get_local_ip() -> str:
         return local_ip
     except OSError:
         return "127.0.0.1"
+
+
+def pick_lan_ip() -> str:
+    """Choose the LAN IP to hand to the bulb, skipping Tailscale/CGNAT overlays.
+
+    Enumerates every non-loopback IPv4 and returns the most usable real-LAN
+    address (skips 100.64.0.0/10 Tailscale and 169.254.0.0/16 APIPA).
+    Prefers 192.168.x, then 10.x, then 172.x, then anything else reachable.
+    Falls back to get_local_ip() when no usable address is found.
+    """
+    try:
+        import psutil
+        candidates: list = []
+        for addrs in psutil.net_if_addrs().values():
+            for a in addrs:
+                if a.family != psutil.AF_INET:
+                    continue
+                if a.address == "127.0.0.1":
+                    continue
+                if not _is_reachable_lan_ip(a.address):
+                    continue
+                candidates.append(a.address)
+
+        def _rank(ip: str) -> int:
+            p = ip.split(".")
+            if p[0] == "192" and p[1] == "168":
+                return 0
+            if p[0] == "10":
+                return 1
+            if p[0] == "172":
+                return 2
+            return 3
+
+        candidates.sort(key=_rank)
+        if candidates:
+            return candidates[0]
+    except Exception:
+        pass
+    return get_local_ip()
 
 def get_mac_address(ip: Optional[str] = None, interface: Optional[str] = None) -> Optional[str]:
     """Get MAC address using psutil (cross-platform, more reliable than getmac).

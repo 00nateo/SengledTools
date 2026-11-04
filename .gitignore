@@ -16,3 +16,8 @@ extras/
 
 # diagnostic JSON files
 *diagnostic*.json
+# local Python environment (rebuilt by setup_unix.sh / pi/install.sh)
+.venv/
+
+# local AI session notes
+session-senglend.md

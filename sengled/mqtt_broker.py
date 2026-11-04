@@ -21,7 +21,7 @@ from typing import Optional
 from amqtt.broker import Broker
 from amqtt.errors import BrokerError
 
-from sengled.utils import get_local_ip
+from sengled.utils import get_local_ip, pick_lan_ip
 from sengled.constants import DEFAULT_BROKER_PORT as BROKER_TLS_PORT
 
 
@@ -40,7 +40,7 @@ def generate_certificates(cert_dir: Path, force_regenerate: bool = False):
             with open(server_cert_path, "rb") as f:
                 cert = x509.load_pem_x509_certificate(f.read())
 
-            current_ip = get_local_ip()
+            current_ip = pick_lan_ip()
             san_ext = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName)
             san_ips = {str(ip) for ip in san_ext.value.get_values_for_type(x509.IPAddress)}
 
@@ -189,6 +189,7 @@ def generate_certificates(cert_dir: Path, force_regenerate: bool = False):
             x509.DNSName("broker.local"),
             x509.IPAddress(ip_address("127.0.0.1")),
             x509.IPAddress(ip_address("0.0.0.0")),
+            x509.IPAddress(ip_address(pick_lan_ip())),
             x509.IPAddress(ip_address(get_local_ip())),
         ]), critical=False
     ).add_extension(
