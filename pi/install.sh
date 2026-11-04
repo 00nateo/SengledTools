@@ -140,12 +140,18 @@ else
   warn "Not answering yet. Check: journalctl -u $SERVICE -n 50"
 fi
 
+# Everything is worked out before the text block: bash 5.2 (Raspberry Pi OS) rejects
+# a quote inside ${...} in a here-document ("bad substitution: no closing }").
 LAN_IP="$(ip -4 -o addr show | awk '$2 ~ /^(eth|end|enx)/ {split($4, a, "/"); print a[1]; exit}')"
+WEB="http://$(hostname).local:3000"
+[ -n "$LAN_IP" ] && WEB="$WEB   or   http://$LAN_IP:3000"
+GREEN=$'\033[1;32m'
+PLAIN=$'\033[0m'
 cat <<EOF
 
-$(printf '\033[1;32m')All set.$(printf '\033[0m')
+${GREEN}All set.${PLAIN}
 
-  Web app:     http://$(hostname).local:3000   or   http://${LAN_IP:-<Pi's IP>}:3000
+  Web app:     $WEB
   Bulb Wi-Fi:  $SSID  (server address for bulbs: $PI_IP)
 
   Pair each bulb from the Mac: put the bulb in setup mode, join its
