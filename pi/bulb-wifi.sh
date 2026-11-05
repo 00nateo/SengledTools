@@ -133,7 +133,10 @@ After=hostapd.service
 PartOf=hostapd.service
 
 [Service]
-ExecStartPre=/usr/sbin/ip addr replace $PI_IP/24 dev $BULB_IF
+# Flush first: an address NetworkManager left behind is 'noprefixroute', and without
+# the 10.42.0.0/24 route replies to the bulbs would leave through Ethernet.
+ExecStartPre=/usr/sbin/ip -4 addr flush dev $BULB_IF
+ExecStartPre=/usr/sbin/ip addr add $PI_IP/24 dev $BULB_IF
 ExecStartPre=/usr/sbin/nft -f /etc/sengled-ap.nft
 ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/dev/null --log-facility=- \\
   --interface=$BULB_IF --except-interface=lo --bind-interfaces \\
