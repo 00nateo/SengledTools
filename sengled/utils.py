@@ -61,7 +61,7 @@ def pick_lan_ip() -> str:
         candidates: list = []
         for addrs in psutil.net_if_addrs().values():
             for a in addrs:
-                if a.family != psutil.AF_INET:
+                if a.family != socket.AF_INET:  # psutil has no AF_INET of its own
                     continue
                 if a.address == "127.0.0.1":
                     continue
@@ -85,6 +85,19 @@ def pick_lan_ip() -> str:
     except Exception:
         pass
     return get_local_ip()
+
+
+def local_ipv4s() -> list:
+    """Every non-loopback IPv4 address of this computer (falls back to the default-route one)."""
+    try:
+        import psutil
+        ips = [a.address for addrs in psutil.net_if_addrs().values() for a in addrs
+               if a.family == socket.AF_INET and not a.address.startswith("127.")]
+        if ips:
+            return ips
+    except Exception:
+        pass
+    return [get_local_ip()]
 
 def get_mac_address(ip: Optional[str] = None, interface: Optional[str] = None) -> Optional[str]:
     """Get MAC address using psutil (cross-platform, more reliable than getmac).

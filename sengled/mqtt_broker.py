@@ -21,8 +21,24 @@ from typing import Optional
 from amqtt.broker import Broker
 from amqtt.errors import BrokerError
 
-from sengled.utils import get_local_ip, pick_lan_ip
+from sengled.utils import get_local_ip, local_ipv4s, pick_lan_ip
 from sengled.constants import DEFAULT_BROKER_PORT as BROKER_TLS_PORT
+
+
+def _server_ips() -> list:
+    """Addresses the server certificate must cover: every address a bulb might use to
+    reach this computer (e.g. a Pi's own bulb Wi-Fi 10.42.0.1 as well as its Ethernet)."""
+    ips = [pick_lan_ip(), get_local_ip(), *local_ipv4s()]
+    return sorted({ip for ip in ips if ip not in ("127.0.0.1", "0.0.0.0")})
+
+
+def _server_san(ips) -> x509.SubjectAlternativeName:
+    return x509.SubjectAlternativeName([
+        x509.DNSName("broker.local"),
+        x509.IPAddress(ip_address("127.0.0.1")),
+        x509.IPAddress(ip_address("0.0.0.0")),
+        *(x509.IPAddress(ip_address(ip)) for ip in ips),
+    ])
 
 
 def generate_certificates(cert_dir: Path, force_regenerate: bool = False):
@@ -40,16 +56,17 @@ def generate_certificates(cert_dir: Path, force_regenerate: bool = False):
             with open(server_cert_path, "rb") as f:
                 cert = x509.load_pem_x509_certificate(f.read())
 
-            current_ip = pick_lan_ip()
+            current_ips = _server_ips()
             san_ext = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName)
             san_ips = {str(ip) for ip in san_ext.value.get_values_for_type(x509.IPAddress)}
 
-            if current_ip in san_ips:
+            missing = [ip for ip in current_ips if ip not in san_ips]
+            if not missing:
                 debug("Certificates already exist, skipping generation")
                 return ca_cert_path, server_cert_path, server_key_path
 
             info(
-                f"Current LAN IP {current_ip} is not in existing server certificate SAN. Regenerating server certificate."
+                f"Server certificate doesn't cover {', '.join(missing)}. Regenerating server certificate."
             )
 
             # Preserve the existing CA so already-paired bulbs can keep trusting this broker.
@@ -82,12 +99,7 @@ def generate_certificates(cert_dir: Path, force_regenerate: bool = False):
             ).add_extension(
                 x509.BasicConstraints(ca=False, path_length=None), critical=True
             ).add_extension(
-                x509.SubjectAlternativeName([
-                    x509.DNSName("broker.local"),
-                    x509.IPAddress(ip_address("127.0.0.1")),
-                    x509.IPAddress(ip_address("0.0.0.0")),
-                    x509.IPAddress(ip_address(current_ip)),
-                ]), critical=False
+                _server_san(current_ips), critical=False
             ).add_extension(
                 x509.KeyUsage(
                     digital_signature=True,
@@ -185,13 +197,7 @@ def generate_certificates(cert_dir: Path, force_regenerate: bool = False):
     ).add_extension(
         x509.BasicConstraints(ca=False, path_length=None), critical=True
     ).add_extension(
-        x509.SubjectAlternativeName([
-            x509.DNSName("broker.local"),
-            x509.IPAddress(ip_address("127.0.0.1")),
-            x509.IPAddress(ip_address("0.0.0.0")),
-            x509.IPAddress(ip_address(pick_lan_ip())),
-            x509.IPAddress(ip_address(get_local_ip())),
-        ]), critical=False
+        _server_san(_server_ips()), critical=False
     ).add_extension(
         x509.KeyUsage(
             digital_signature=True,
