@@ -12,11 +12,14 @@ sudo true || exit 1  # not `sudo -v`: Pi OS asks it for a password even with NOP
 trap 'kill 0' EXIT
 
 head "On the bulbs' Wi-Fi now"
+# The Pi 3's Wi-Fi driver gives no signal for connected devices, so show what each
+# bulb last reported about its own signal (in the bulb service's log).
 sudo iw dev wlan0 station dump 2>/dev/null |
-  awk '/^Station/ {mac=$2} /^[ \t]*signal:/ {sig=$2} /connected time/ {print mac, sig, $3}' |
-  while read -r mac sig secs; do
+  awk '/^Station/ {mac=$2} /connected time/ {print mac, $3}' |
+  while read -r mac secs; do
     ip="$(awk -v m="$mac" '$2 == m {print $3}' "$LEASES" 2>/dev/null)"
-    printf '  %s  %-15s  %s dBm  for %s min\n' "$mac" "${ip:-?}" "$sig" "$((secs / 60))"
+    sig="$(grep -i "$mac ip .*Wi-Fi signal" "$LOG" 2>/dev/null | tail -1 | grep -oE -- '-?[0-9]+ dBm')"
+    printf '  %s  %-15s  %-8s  connected %s min\n' "$mac" "${ip:-?}" "$sig" "$((secs / 60))"
   done
 echo "  MQTT connections from bulbs: $(ss -Htn state established '( sport = :8883 )' | grep -vc '127\.0\.0\.1')"
 echo
