@@ -575,8 +575,16 @@
             <summary>“<span data-v="ssid">SengledNet</span>” doesn't show up in Wi-Fi lists</summary>
             <div>
               <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
-<pre><code>sudo rfkill unblock wifi &amp;&amp; sudo nmcli connection up SengledNet</code></pre></div>
-              <p>If that prints an error, run the installer again; it recreates the network if it's missing.</p>
+<pre><code>sudo rfkill unblock wifi &amp;&amp; sudo systemctl restart hostapd</code></pre></div>
+              <p>If it still doesn't appear, <code>journalctl -u hostapd -u sengled-ap-net -n 30</code> shows why. Running the installer again also recreates the network, keeping its name and password.</p>
+            </div>
+          </details>
+          <details>
+            <summary>A Mac or iPhone says “<span data-v="ssid">SengledNet</span>” could not be joined</summary>
+            <div>
+              <p>Pis set up by an earlier version of the installer host the network with NetworkManager, which Apple devices can't join on a Pi 3. Get the latest tools onto the Pi (<code>git pull</code>, or the copy command from step 4), then move the network to hostapd. It keeps the same name and password, so the bulbs don't notice:</p>
+              <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
+<pre><code>cd ~/SengledTools &amp;&amp; bash pi/bulb-wifi.sh</code></pre></div>
             </div>
           </details>
           <details>

@@ -11,9 +11,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICE=sengled-lights
-BULB_IF=wlan0
-CON=SengledNet          # NetworkManager's name for the bulbs' network
-PI_IP=10.42.0.1
+PI_IP=10.42.0.1         # the Pi on the bulbs' Wi-Fi (set up by pi/bulb-wifi.sh)
 
 say()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 ok()   { printf '\033[32m✓ %s\033[0m\n' "$*"; }
@@ -29,7 +27,7 @@ command -v nmcli >/dev/null || die "NetworkManager (nmcli) not found. Use Raspbe
 # --------------------------------------------------------------------------
 say "1/5  System packages"
 sudo apt-get update -q
-sudo apt-get install -y -q python3-venv python3-pip iw dnsmasq-base curl ca-certificates rsync
+sudo apt-get install -y -q python3-venv python3-pip iw hostapd dnsmasq-base nftables curl ca-certificates rsync
 
 major="$(node -v 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/' || true)"
 if [ "${major:-0}" -lt 20 ] || ! command -v npm >/dev/null; then
@@ -63,45 +61,8 @@ ok "Web app built"
 
 # --------------------------------------------------------------------------
 say "4/5  Wi-Fi network for the bulbs"
-if nmcli -t -f NAME connection show | grep -qx "$CON"; then
-  SSID="$(nmcli -g 802-11-wireless.ssid connection show "$CON")"
-  ok "'$SSID' is already set up - keeping it."
-  echo "  (To change it: sudo nmcli connection delete $CON, then run this again.)"
-else
-  # wlan0 is about to become the bulbs' network: don't cut off our only connection.
-  if ! nmcli -t -f TYPE,STATE device | grep -q '^ethernet:connected'; then
-    die "No Ethernet connection. Plug the Pi into the building's network first:
-  its Wi-Fi is about to become the bulbs' network."
-  fi
-  read -r _ _ ssh_ip _ <<<"${SSH_CONNECTION:-- - - -}"
-  if ip -4 -o addr show dev "$BULB_IF" 2>/dev/null | grep -q " $ssh_ip/"; then
-    eth_ip="$(ip -4 -o addr show | awk '$2 ~ /^(eth|end|enx)/ {split($4, a, "/"); print a[1]; exit}')"
-    die "You're connected to the Pi over its Wi-Fi, which this step takes over.
-  Reconnect over Ethernet and run this again:  ssh $(id -un)@$eth_ip"
-  fi
-  read -rp "  Your 2-letter country code, for Wi-Fi rules [US]: " COUNTRY
-  COUNTRY="$(echo "${COUNTRY:-US}" | tr '[:lower:]' '[:upper:]')"
-  sudo raspi-config nonint do_wifi_country "$COUNTRY" >/dev/null 2>&1 || sudo iw reg set "$COUNTRY" || true
-  sudo rfkill unblock wifi || true
-
-  read -rp "  Name for the bulbs' Wi-Fi [SengledNet]: " SSID
-  SSID="${SSID:-SengledNet}"
-  while :; do
-    read -rsp "  Password for it (8-63 letters and numbers): " PW; echo
-    if [[ ${#PW} -ge 8 && ${#PW} -le 63 && "$PW" =~ ^[A-Za-z0-9]+$ ]]; then break; fi
-    warn "Use 8-63 letters and numbers only - bulbs can choke on symbols."
-  done
-
-  # 2.4 GHz (band bg), WPA2-AES, no PMF: what the bulbs support.
-  sudo nmcli connection add type wifi ifname "$BULB_IF" con-name "$CON" ssid "$SSID" \
-    802-11-wireless.mode ap 802-11-wireless.band bg \
-    ipv4.method shared ipv4.addresses "$PI_IP/24" ipv6.method disabled \
-    wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PW" wifi-sec.proto rsn \
-    wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.pmf disable \
-    connection.autoconnect yes connection.autoconnect-priority 100 >/dev/null
-  sudo nmcli connection up "$CON" >/dev/null
-  ok "Hosting '$SSID' on $BULB_IF - the Pi is $PI_IP on it"
-fi
+bash "$REPO/pi/bulb-wifi.sh"  # hostapd on wlan0; keeps an existing network's name and password
+SSID="$(sudo sed -n 's/^ssid=//p' /etc/hostapd/hostapd.conf | head -1)"
 
 # --------------------------------------------------------------------------
 say "5/5  Start at boot"
@@ -116,7 +77,7 @@ After=network-online.target NetworkManager.service
 User=$(id -un)
 WorkingDirectory=$REPO/web
 Environment=NODE_ENV=production
-Environment=PATH=$(dirname "$NPM"):/usr/local/bin:/usr/bin:/bin
+Environment=PATH=$(dirname "$NPM"):/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 ExecStart=$NPM start
 Restart=always
 RestartSec=5

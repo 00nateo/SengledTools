@@ -41,6 +41,7 @@ import ipaddress
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -428,8 +429,9 @@ def parse_iw_dev(text):
 
 def linux_wifi():
     """Linux: {ifname: (ssid, type)} for each Wi-Fi interface that's joined or hosting a network."""
+    iw = shutil.which("iw") or "/usr/sbin/iw"  # Debian keeps it in sbin, off a user's PATH
     try:
-        return parse_iw_dev(subprocess.run(["iw", "dev"], capture_output=True,
+        return parse_iw_dev(subprocess.run([iw, "dev"], capture_output=True,
                                            text=True, timeout=3).stdout)
     except Exception:
         return {}
