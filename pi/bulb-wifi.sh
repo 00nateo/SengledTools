@@ -106,6 +106,8 @@ sudo tee /etc/systemd/system/hostapd.service.d/sengled-ap.conf >/dev/null <<EOF
 [Unit]
 After=NetworkManager.service
 [Service]
+# -s: joins and leaves go to the journal (pi/watch.sh shows them live)
+Environment=DAEMON_OPTS=-s
 ExecStartPre=-/usr/sbin/rfkill unblock wifi
 RestartSec=5
 EOF

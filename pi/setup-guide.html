@@ -545,6 +545,9 @@
               If only <code>sengled_ctl.py</code> changed, a restart is enough:
               <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
 <pre><code>sudo systemctl restart sengled-lights</code></pre></div></li>
+            <li><b>Watch things connect.</b> Lists what's on the bulbs' Wi-Fi, then shows live as devices join, bulbs check in and connect, and commands go out:
+              <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
+<pre><code>bash ~/SengledTools/pi/watch.sh</code></pre></div></li>
             <li><b>Logs.</b> The first shows the service; the second shows what the bulbs do (the same log as on the Mac):
               <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
 <pre><code>journalctl -u sengled-lights -f</code></pre></div>
