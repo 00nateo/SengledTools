@@ -563,11 +563,30 @@ def probe(ip, timeout=1.0):
     return bulb_from_status(ip, res) if succeeded(res) else None
 
 
+def neighbors():
+    """Linux: IPv4 hosts the kernel has recently heard from (`ip neigh`), e.g. bulbs on
+    the Pi's own Wi-Fi. Elsewhere: []."""
+    if not IS_LINUX:
+        return []
+    try:
+        text = subprocess.run(["ip", "-4", "neigh", "show"], capture_output=True,
+                              text=True, timeout=3).stdout
+    except Exception:
+        return []
+    return [ln.split()[0] for ln in text.splitlines()
+            if ln.strip() and not ln.rstrip().endswith(("FAILED", "INCOMPLETE"))]
+
+
 def scan(window=2.5, verbose=True):
     """Find UDP-reachable bulbs: the setup AP, cached IPs, broadcasts, and a unicast
-    sweep of every local subnet (all fired at once, then listen). Returns {mac: bulb}."""
+    sweep of every local subnet (all fired at once, then listen). Returns {mac: bulb}.
+
+    Likely hosts go first and a send never waits. On Linux each packet for an absent
+    host sits in the ARP queue for ~3 s and counts against the socket's send buffer,
+    so once that fills, waiting sends stalled a /22 sweep (a Pi's Ethernet) past a minute."""
     targets, bcasts, nets, mine = [AP_IP], ["255.255.255.255"], [], set()
     targets += [v["ip"] for v in load_cache().values() if v.get("ip")]
+    targets += neighbors()
     for _, iface in interfaces():
         mine.add(str(iface.ip))
         net = iface.network
@@ -576,6 +595,7 @@ def scan(window=2.5, verbose=True):
         nets.append(net)
         if net.prefixlen < 31:
             bcasts.append(str(iface.network.broadcast_address))
+    for net in sorted(nets, key=lambda n: n.num_addresses):  # small (bulb) networks first
         targets += [str(h) for h in net.hosts()]
     targets += [str(h) for h in HOTSPOT_NET.hosts()]
     targets = [t for t in dict.fromkeys(targets) if t not in mine]
@@ -586,10 +606,10 @@ def scan(window=2.5, verbose=True):
     found = {}
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        s.settimeout(0.05)  # never block on a send or receive
 
         def drain(until):
-            while time.time() < until:
+            while (left := until - time.time()) > 0:
+                s.settimeout(min(0.05, left))
                 try:
                     data, addr = s.recvfrom(4096)
                     res = json.loads(data.decode(errors="ignore")).get("result")
@@ -598,13 +618,15 @@ def scan(window=2.5, verbose=True):
                 if succeeded(res):
                     b = bulb_from_status(addr[0], res)
                     found[b["mac"] or addr[0]] = b
+            s.setblocking(False)  # back to sending: skip a send rather than wait for room
 
+        s.setblocking(False)
         for _ in range(2):
             for i, t in enumerate(bcasts + targets):
                 try:
                     s.sendto(msg, (t, PORT))
                 except OSError:
-                    pass  # no route / no ARP answer: nobody there
+                    pass  # no route, no ARP answer, or send buffer full: skip it
                 if i % 64 == 63:
                     drain(time.time() + 0.01)
             drain(time.time() + window / 2)
@@ -2605,11 +2627,16 @@ class Api:
                 if not fn:
                     return self._send(404, {"error": "not found"})
                 try:
-                    self._send(200, fn())
+                    code, result = 200, fn()
                 except ValueError as e:
-                    self._send(400, {"error": str(e)})
+                    code, result = 400, {"error": str(e)}
                 except Exception as e:
-                    self._send(500, {"error": f"{type(e).__name__}: {e}"})
+                    code, result = 500, {"error": f"{type(e).__name__}: {e}"}
+                try:
+                    self._send(code, result)
+                except (BrokenPipeError, ConnectionResetError):
+                    # The web app gave up waiting (its proxy allows 30 s): nobody to answer.
+                    log("api", f"{path}: finished after the web app stopped waiting")
 
             def do_GET(self):
                 self._route("GET")
