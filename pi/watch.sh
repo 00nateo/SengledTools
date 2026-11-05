@@ -8,12 +8,12 @@ LOG="$HOME/.sengled/logs/sengled.log"
 LEASES=/var/lib/misc/sengled-ap.leases
 head() { printf '\033[1;36m%s\033[0m\n' "$*"; }
 
-sudo -v || exit 1
+sudo true || exit 1  # not `sudo -v`: Pi OS asks it for a password even with NOPASSWD
 trap 'kill 0' EXIT
 
 head "On the bulbs' Wi-Fi now"
 sudo iw dev wlan0 station dump 2>/dev/null |
-  awk '/^Station/ {mac=$2} /signal:/ {sig=$2} /connected time/ {print mac, sig, $3}' |
+  awk '/^Station/ {mac=$2} /^[ \t]*signal:/ {sig=$2} /connected time/ {print mac, sig, $3}' |
   while read -r mac sig secs; do
     ip="$(awk -v m="$mac" '$2 == m {print $3}' "$LEASES" 2>/dev/null)"
     printf '  %s  %-15s  %s dBm  for %s min\n' "$mac" "${ip:-?}" "$sig" "$((secs / 60))"
