@@ -99,6 +99,9 @@ wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
 ieee80211w=0
 wpa_passphrase=$PW
+# Joins, leaves and handshakes go to the journal (pi/watch.sh shows them live).
+logger_syslog=-1
+logger_syslog_level=2
 EOF
 
 sudo mkdir -p /etc/systemd/system/hostapd.service.d
@@ -106,8 +109,6 @@ sudo tee /etc/systemd/system/hostapd.service.d/sengled-ap.conf >/dev/null <<EOF
 [Unit]
 After=NetworkManager.service
 [Service]
-# -s: joins and leaves go to the journal (pi/watch.sh shows them live)
-Environment=DAEMON_OPTS=-s
 ExecStartPre=-/usr/sbin/rfkill unblock wifi
 RestartSec=5
 EOF
