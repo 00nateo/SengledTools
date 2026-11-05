@@ -70,8 +70,8 @@ NPM="$(command -v npm)"
 sudo tee /etc/systemd/system/$SERVICE.service >/dev/null <<EOF
 [Unit]
 Description=Sengled lights: bulb service (MQTT :8883) + web app (:3000)
-Wants=network-online.target
-After=network-online.target NetworkManager.service
+Wants=network-online.target sengled-ap-net.service
+After=network-online.target NetworkManager.service sengled-ap-net.service
 
 [Service]
 User=$(id -un)

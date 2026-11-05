@@ -2689,9 +2689,12 @@ def serve_api(port=API_PORT):
 
 def relaunch_with_venv():
     """MQTT needs paho-mqtt + amqtt; if this python lacks them, re-run with the repo's .venv."""
-    venv = os.path.join(HERE, ".venv", "bin", "python")
+    venv_dir = os.path.join(HERE, ".venv")
+    venv = os.path.join(venv_dir, "bin", "python")
+    # Compare environments, not binaries: on Linux .venv/bin/python is a symlink to the
+    # system python3, so the two resolve to the same file while only one has the packages.
     if (not mqtt_available() and os.path.exists(venv)
-            and os.path.realpath(sys.executable) != os.path.realpath(venv)
+            and os.path.realpath(sys.prefix) != os.path.realpath(venv_dir)
             and not os.environ.get("SENGLED_CTL_NO_VENV")):
         os.environ["SENGLED_CTL_NO_VENV"] = "1"
         os.execv(venv, [venv, os.path.abspath(__file__)] + sys.argv[1:])
