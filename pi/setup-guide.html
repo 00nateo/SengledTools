@@ -469,26 +469,29 @@
           <label class="done-toggle"><input type="checkbox" data-step="pair">Done</label>
         </div>
         <div class="step-body">
-          <p>Each bulb is paired once, <b>from the Mac</b>, pointing it at the Pi. Do one bulb at a time.</p>
+          <p>Each bulb is paired once, <b>from the Pi</b>. Do one bulb at a time.</p>
           <ol class="substeps">
-            <li><b>Put the bulb in setup mode.</b> If it still works in your Mac's web app, select it and go to
-              <i>Advanced → Factory reset</i> (type <code>RESET</code>). Otherwise, turn it off and on <b>5 times</b> until it blinks.</li>
-            <li><b>On the Mac,</b> join the <b>Sengled Wi-Fi Bulb_…</b> network from the Wi-Fi menu. It has no password.</li>
-            <li><b>In Terminal on the Mac,</b> send the bulb the Pi's network and address:
-              <div class="cmd"><div class="cmd-head"><span class="where mac">Mac · Terminal</span><button class="copy">Copy</button></div>
-<pre><code>cd ~/SengledTools &amp;&amp; python3 sengled_ctl.py wifi --ssid "<span class="v" data-v="ssid">SengledNet</span>" --password '<span class="v" data-v="pw">YOUR-PASSWORD</span>' --callback 10.42.0.1</code></pre></div>
+            <li><b>Put the bulb in setup mode.</b> If it still works in the web app, select it and go to
+              <i>Advanced → Factory reset</i> (type <code>RESET</code>). Otherwise, flick its power off and on <b>5+ times</b>, quickly, until it flashes.</li>
+            <li><b>On the Pi,</b> run:
+              <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
+<pre><code>bash ~/SengledTools/pi/pair-bulb.sh</code></pre></div>
+              It finds the bulb's <b>Sengled_Wi-Fi Bulb_…</b> network, pauses <span data-v="ssid">SengledNet</span> for about 20 seconds
+              (the other bulbs reconnect by themselves), gives the bulb <span data-v="ssid">SengledNet</span>'s name and password, and waits for it to connect.
               <p class="out-label">It ends with:</p>
-<pre class="out"><code><span class="g">  ✓</span> bulb left its setup network after ~4s.
-<span class="g">  ✓</span> the bulb is joining '<span data-v="ssid">SengledNet</span>' and will connect to the server at 10.42.0.1 within ~1 min.</code></pre>
+<pre class="out"><code><span class="g">✓</span> Joined '<span data-v="ssid">SengledNet</span>'
+<span class="g">✓</span> Connected to the Pi at 10.42.0.214 - it's in the web app now (7C:87:CE:AC:EF:B8).</code></pre>
+              If it finds nothing, it says how to put the bulb in setup mode and waits for you to press Enter to look again.
+              If several bulbs are in setup mode, it asks which one.
             </li>
-            <li><b>Within a minute,</b> the bulb shows up in the Pi's web app as <i>Online · Wi-Fi</i>. Click the ✎ next to it to name it.
-              The Mac goes back to its usual Wi-Fi by itself. If it doesn't, pick your network from the Wi-Fi menu.</li>
+            <li><b>In the web app,</b> click the ✎ next to the new bulb to name it. A bulb you paired before keeps its name.</li>
           </ol>
           <div class="callout tip">
-            <b>Prefer clicking?</b>
-            In the Mac's own web app (<code>npm start</code> in <code>web/</code>), use <i>Wi-Fi setup</i> and click <b>10.42.0.1</b> under
-            <i>Server address</i>. Or in the terminal app (<code>python3 sengled_ctl.py</code>), press <kbd>w</kbd> and enter 10.42.0.1 as the server
-            address. Don't use Wi-Fi setup in the <i>Pi's</i> web app, because the Pi's Wi-Fi is busy hosting the bulbs.
+            <b>From the Mac instead</b>
+            Join the bulb's <b>Sengled_Wi-Fi Bulb_…</b> network from the Wi-Fi menu (it has no password), then:
+            <div class="cmd"><div class="cmd-head"><span class="where mac">Mac · Terminal</span><button class="copy">Copy</button></div>
+<pre><code>cd ~/SengledTools &amp;&amp; python3 sengled_ctl.py wifi --ssid "<span class="v" data-v="ssid">SengledNet</span>" --password '<span class="v" data-v="pw">YOUR-PASSWORD</span>' --callback 10.42.0.1</code></pre></div>
+            Don't use Wi-Fi setup in the <i>Pi's</i> web app: it expects the computer running it to join the bulb's network.
           </div>
           <div class="callout warn">
             <b>Range</b>
@@ -598,11 +601,27 @@
                   (case-sensitive) and that the bulb is within range of the Pi, then repeat step 7.</li>
                 <li><b>See whether it joined the Pi's Wi-Fi.</b> Each connected device is one line:
                   <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
-<pre><code>iw dev wlan0 station dump | grep Station</code></pre></div></li>
+<pre><code>sudo iw dev wlan0 station dump | grep Station</code></pre></div></li>
                 <li><b>See whether it contacted the Pi:</b>
                   <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
 <pre><code>grep call-home ~/.sengled/logs/sengled.log | tail</code></pre></div>
                   If it joined but never called home, it was probably paired with the wrong server address. Pair it again with <code>--callback 10.42.0.1</code>.</li>
+              </ul>
+            </div>
+          </details>
+          <details>
+            <summary>A bulb that worked stopped responding</summary>
+            <div>
+              <ul>
+                <li><b>Turn its switch off, wait 10 seconds, and turn it on.</b> Once, slowly: flicking it quickly several times resets it.
+                  Within a minute it should rejoin. Watch for it with:
+                  <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
+<pre><code>bash ~/SengledTools/pi/watch.sh</code></pre></div></li>
+                <li><b>Still missing after 2 minutes, or flashing?</b> It has lost its Wi-Fi settings. Pair it again from the Pi.
+                  It keeps its name in the web app:
+                  <div class="cmd"><div class="cmd-head"><span class="where pi">Pi · over SSH</span><button class="copy">Copy</button></div>
+<pre><code>bash ~/SengledTools/pi/pair-bulb.sh</code></pre></div>
+                  If it says no bulb is in setup mode, reset the bulb (5+ quick flicks until it flashes) and press Enter.</li>
               </ul>
             </div>
           </details>

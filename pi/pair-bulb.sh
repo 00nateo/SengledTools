@@ -4,7 +4,7 @@
 #   bash ~/SengledTools/pi/pair-bulb.sh EFB8       (pick one by the end of its name, if several)
 #
 # A bulb in setup mode (new, or factory reset: flick its power 5+ times until it
-# flashes) hosts its own open network, 'Sengled Wi-Fi Bulb_XXXXXX', at 192.168.8.1.
+# flashes) hosts its own open network, 'Sengled_Wi-Fi Bulb_XXXX', at 192.168.8.1.
 # The Pi's only Wi-Fi radio is busy hosting the bulbs' network, so this:
 #   1. looks for the bulb's setup network (the bulbs' network stays up meanwhile),
 #   2. pauses the bulbs' network for ~20 s (the other bulbs reconnect by themselves),
